@@ -1,11 +1,11 @@
-﻿#include <iostream>
+#include <iostream>
 #include <vector>
 #include <string>
 #include <fstream>
 
 class WorkTime {
 private:
-    std::string date, time1,time2;
+    std::string date, time1, time2;
     bool check_date()
     {
         if (date.size() != 5) //сначала проверяем формат строки дд:мм
@@ -41,13 +41,19 @@ private:
         if (hour1 > hour2 || (hour1 == hour2 && minute1 > minute2)) //проверка, чтобы начальное время не было больше конечного
             return false;
     }
-    
+
 public:
     WorkTime()
     {
         date = "01.01";
         time1 = "00:00";
         time2 = "23:59";
+    }
+    WorkTime(const WorkTime& a) //конструктор копирования
+    {
+        date = a.date;
+        time1 = a.time1;
+        time2 = a.time2;
     }
     WorkTime(std::string d, std::string t1, std::string t2)
     {
@@ -72,21 +78,27 @@ public:
         int hour1 = stoi(time1.substr(0, 2)); //инициализируем целочисленные переменные часов и минут начала и конца
         int hour2 = stoi(time2.substr(0, 2));
         int minute1 = stoi(time1.substr(3, 2));
-        int minute2 = stoi(time2.substr(3, 2)); 
+        int minute2 = stoi(time2.substr(3, 2));
         int minute_result, hour_result;
         if (minute2 - minute1 >= 0) { //если минут конца больше или = минут начала, считаем обычным образом
             minute_result = minute2 - minute1;
             hour_result = hour2 - hour1;
         }
         else { //если минут конца меньше чем минут начала, мы "занимаем" один час
-            minute_result = minute2 - minute1+60;
-            hour_result = hour2 - hour1-1;
+            minute_result = minute2 - minute1 + 60;
+            hour_result = hour2 - hour1 - 1;
         }
         std::string result; //создаем строку для вывода результата
         result += (hour_result < 10) ? ("0" + std::to_string(hour_result)) : (std::to_string(hour_result));
         result += ":";
         result += (minute_result < 10) ? ("0" + std::to_string(minute_result)) : (std::to_string(minute_result));
         return result;
+    }
+
+    std::string month() {
+        int num = stoi(date.substr(3, 2));
+        std::string months[] = { "January", "February","March","April","May","June","July","August","September","October","November","December" };
+        return months[num - 1];
     }
 
     friend std::ostream& operator<<(std::ostream&, WorkTime&);
@@ -98,7 +110,7 @@ public:
 std::istream& operator>>(std::istream& in, WorkTime& c)
 {
     std::cout << "Input date in format (dd.mm): ";
-    while ( !(in>>c.date) || in.peek()!='\n'|| !c.check_date()) {
+    while (!(in >> c.date) || in.peek() != '\n' || !c.check_date()) {
         std::cout << "Incorrect date format. Enter date again: ";
         in.clear();
         while (in.get() != '\n'); // очистка потока после неправильно введенной даты
@@ -117,7 +129,7 @@ std::istream& operator>>(std::istream& in, WorkTime& c)
     }
     return in;
 }
-    
+
 
 std::ostream& operator << (std::ostream& out, WorkTime& c)
 {
@@ -128,12 +140,14 @@ std::ostream& operator << (std::ostream& out, WorkTime& c)
 std::ifstream& operator>>(std::ifstream& in, WorkTime& obj)
 {
     in >> obj.date; //сначала берем дату из потока
-    in >> obj.time1;
+    in >> obj.time1; //потом время начала и время конца
     in >> obj.time2;
     if (!obj.check_date())
-        obj.date = "error";
+        throw "invalid date format";
     if (!obj.check_time())
-        obj.time1 = obj.time2 = "error";
+        throw "invalid time format";
+    if (in.peek() != '\n' && in.peek() != EOF)
+        throw "invalid line format";
     return in;
 }
 
@@ -158,7 +172,7 @@ char input_option(std::string description) {
 int input_num_of_elements() {
     int n;
     std::cout << "Enter the number of elements in array: ";
-    while (!(std::cin >> n) || std::cin.peek() != '\n' || (n < 2)) { //пока не введено n, или следующий символ не равен переводу строки, или введено меньше двух
+    while (!(std::cin >> n) || std::cin.peek() != '\n' || (n < 1)) { //пока не введено n, или следующий символ не равен переводу строки, или введено меньше двух
         std::cin.clear(); //очищаем поток от флага ошибки
         std::cin.ignore(32767, '\n'); //очищаем поток от символов
         std::cout << "Error, enter a positive number bigger than 1: ";
@@ -191,45 +205,50 @@ std::string input_filename() {
             std::cout << "Error, this file is empty.\nEnter the file name again: ";
         else
             correct_file = true;
+        infile.close();//закрываем файл
     }
     return filename;
 }
 
 std::vector<WorkTime> input_vector_from_file() {
     std::vector<WorkTime> array;
-    bool correct_file = false;
     std::cin.get(); //убираем из потока символ перевода строки, оставшийся там после предыдущего ввода (для getline)
-    while (!correct_file) {
-        std::string filename = input_filename();
-        std::ifstream fin(filename);
-        bool correct_elements = true;
-        for (int i = 1; fin.peek() != EOF && correct_elements; i++) {
+    std::string filename = input_filename();
+    std::ifstream fin(filename);
+    bool errors = false; //есть ли ошибки
+    for (int i = 1; fin.peek() != EOF; i++) {
+        try {
             WorkTime a;
             fin >> a;
-            if (a.get_date() == "error"){
-                std::cout << "Error on line " << i << " (wrong date format). ";
-                correct_elements = false;
-            }
-            else if (a.get_start() == "error" || a.get_end() == "error"){
-                std::cout << "Error on line " << i << " (wrong time format). ";
-                correct_elements = false;
-            }
-            else
-                array.push_back(a);
+            array.push_back(a);
         }
-        if (correct_elements)
-            correct_file = true;
-        else
-            array.clear(); //если ввод состоялся неправильно, очищаем массив
+        catch (const char* e) {
+            std::cout << "Error on line " << i << " ("<<e<<").\n";
+            errors = true;
+        }
+        catch (...) {
+            std::cout << "Error!";
+            errors = true;
+        }
     }
-    std::cout << "Input was successful.\n";
+    fin.close();
+    if(!errors) //если нет ошибок, ввод проведен успешно
+        std::cout << "Input was successful.\n";
     return array;
 }
 
-std::vector<std::string> calculating_results(std::vector<WorkTime>& v){
+std::vector<std::string> calculating_results(std::vector<WorkTime>& v) {
     std::vector<std::string> results;
     for (int i = 0; i < v.size(); i++) {
         results.push_back(v[i].work_hours());
+    }
+    return results;
+}
+
+std::vector<std::string> months_results(std::vector<WorkTime>& v) {
+    std::vector<std::string> results;
+    for (int i = 0; i < v.size(); i++) {
+        results.push_back(v[i].month());
     }
     return results;
 }
@@ -288,7 +307,8 @@ int main()
             std::cout << "Each element must be on a separate line in the format (dd.mm hh:mm hh:mm)\n";
             objects = input_vector_from_file();
         }
-        results = calculating_results(objects);
+        //results = calculating_results(objects);
+        results = months_results(objects);
         char out_option = input_option("How do you want to output the elements?\n1 - To console\n2 - To file\n");
         if (out_option == '1') { //вывод в консоль
             output(objects);
@@ -298,7 +318,8 @@ int main()
             std::ofstream fout("output.txt", std::ios_base::app);
             output(fout, objects);
             output(fout, results);
-            std::cout<<"Results are output to file output.txt\n";
+            fout.close();
+            std::cout << "Results are output to file output.txt\n";
         }
         objects.clear(); //очищаем векторы
         results.clear();
